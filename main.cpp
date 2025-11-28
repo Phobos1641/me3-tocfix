@@ -503,7 +503,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    std::filesystem::path pBasePath, pBIOPath;
+    std::error_code ec;
+    std::filesystem::path pBasePath, pBIOPath, pTOCPathBackup;
 
     pBasePath = pTOCPath.parent_path().parent_path();
     pBIOPath = pBasePath / "BIOGame";
@@ -514,9 +515,19 @@ int main(int argc, char *argv[])
     std::println(stderr, "BIOGame path: {}", pBIOPath.string());
     std::println(stderr, "DLC path: {}", pDLCPath.string());
 
+    pTOCPathBackup = pTOCPath;
+    pTOCPathBackup += std::filesystem::path(".bak").stem();
+
+    std::filesystem::rename(pTOCPath, pTOCPathBackup, ec);
+    if (ec) {
+        std::println(stderr, "Failed to rename original TOC file");
+
+        return EXIT_FAILURE;
+    }
+
     std::fstream fs;
 
-    fs.open("/mnt/ram/toc.bin", std::fstream::out | std::fstream::binary | std::fstream::trunc);
+    fs.open(pTOCPath, std::fstream::out | std::fstream::binary | std::fstream::trunc);
 
     // NOTE: Legendary Edition 1 stores DLC TOC separately
 #ifdef LEGENDARY_EDITION
