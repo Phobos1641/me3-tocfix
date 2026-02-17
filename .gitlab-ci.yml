@@ -1,0 +1,153 @@
+image: debian:stable-slim
+
+stages:
+  - build
+  - release
+
+variables:
+  _build_type: "debugoptimized"
+
+build:linux-i686:
+  stage: build
+  tags:
+    - gitgud
+  artifacts:
+    paths:
+      - build
+    expire_in: 1 week
+  variables:
+    - PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig
+  before_script:
+    - dpkg --add-architecture i386 && apt-get update
+    - apt-get install -y --no-install-recommends crossbuild-essential-i386 git pkg-config meson ninja-build
+  script:
+    - meson setup build/linux/i686 --buildtype=$_build_type -Dcpp_args='-m32' -Dcpp_link_args='-m32' -Ddefault_library=static
+    - meson configure build/linux/i686 -Dcpp_args="-static"
+    - ninja -C build/linux/i686
+    - strip build/linux/i686/me3-tocfix || true
+
+build:linux-x86_64:
+  stage: build
+  tags:
+    - gitgud
+  artifacts:
+    paths:
+      - build
+    expire_in: 1 week
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends build-essential git pkg-config meson ninja-build
+  script:
+    - meson setup build/linux/x86_64 --buildtype=$_build_type -Ddefault_library=static
+    - meson configure build/linux/x86_64 -Dcpp_args="-static"
+    - ninja -C build/linux/x86_64
+    - strip build/linux/x86_64/me3-tocfix || true
+
+.windows_mingw_template: &windows_mingw
+  stage: build
+  tags:
+    - gitgud
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends build-essential git pkg-config meson ninja-build mingw-w64 mingw-w64-tools
+  artifacts:
+    expire_in: 1 week
+  script:
+    - |
+      cat > mingw_cross.ini <<EOF
+      [binaries]
+      c = '/usr/bin/$MINGW_TRIPLE-gcc'
+      cpp = '/usr/bin/$MINGW_TRIPLE-g++'
+      ar = '/usr/bin/$MINGW_TRIPLE-ar'
+      strip = '/usr/bin/$MINGW_TRIPLE-strip'
+      pkgconfig = '/usr/bin/pkg-config'
+
+      [properties]
+      needs_exe_wrapper = true
+
+      [host_machine]
+      system = 'windows'
+      cpu_family = '$CPU_FAMILY'
+      cpu = '$CPU'
+      endian = 'little'
+      EOF
+    - meson setup "$BUILD_DIR" --cross-file=mingw_cross.ini --buildtype=$_build_type
+    - ninja -C "$BUILD_DIR"
+    - $MINGW_TRIPLE-strip "$BUILD_DIR/me3-tocfix.exe" || true
+
+build:windows-x86_64:
+  <<: *windows_mingw
+  variables:
+    MINGW_TRIPLE: x86_64-w64-mingw32
+    CPU_FAMILY: x86_64
+    CPU: x86_64
+    BUILD_DIR: build/windows/x86_64
+  artifacts:
+    paths:
+      - build/windows/x86_64
+
+build:windows-i686:
+  <<: *windows_mingw
+  variables:
+    MINGW_TRIPLE: i686-w64-mingw32
+    CPU_FAMILY: x86
+    CPU: i686
+    BUILD_DIR: build/windows/i686
+  artifacts:
+    paths:
+      - build/windows/i686
+
+release:
+  stage: release
+  image: curlimages/curl:latest
+  tags:
+    - gitgud
+  rules:
+    - if: $CI_COMMIT_TAG
+  dependencies:
+    - build:linux-i686
+    - build:linux-x86_64
+    - build:windows-i686
+    - build:windows-x86_64
+  script:
+    - |
+      set -euo pipefail
+
+      REPO_ENC=$(echo "$CI_PROJECT_PATH" | sed 's#/#%2F#g')
+      REPO_API=$CI_API_V4_URL/projects/$REPO_ENC
+      TAG="$CI_COMMIT_TAG"
+      AUTH="Authorization: Bearer $RELEASE_API_TOKEN"
+
+      curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"$TAG\",\"tag_name\":\"$TAG\"}" \
+        "$REPO_API/releases" || true
+
+      PLATFORMS=(
+        "build/linux/i686"
+        "build/linux/x86_64"
+        "build/windows/i686"
+        "build/windows/x86_64"
+      )
+
+      for p in "${PLATFORMS[@]}"; do
+        if [ -d "$p" ]; then
+          file_count=$(find "$p" -maxdepth 1 -type f | wc -l)
+          if [ "$file_count" -eq 1 ]; then
+            fpath=$(find "$p" -maxdepth 1 -type f)
+            fname=$(basename "$fpath")
+
+            echo "Uploading $fpath ..."
+            upload_json=$(curl -s --header "$AUTH" --upload-file "$fpath" "$REPO_API/uploads")
+
+            file_url=$(echo "$upload_json" | jq -r '.url')
+            curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
+              -d "{\"name\":\"$fname\",\"url\":\"$file_url\"}" \
+              "$REPO_API/releases/$TAG/assets/links"
+            echo "Linked $fname -> $file_url"
+          else
+            echo "Skipping $p: expected 1 file, found $file_count" >&2
+          fi
+        else
+          echo "Path $p does not exist, skipping."
+        fi
+      done
