@@ -16,7 +16,7 @@ build:linux-i686:
       - build
     expire_in: 1 week
   variables:
-    - PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig
+     PKG_CONFIG_LIBDIR: "/usr/lib/i386-linux-gnu/pkgconfig"
   before_script:
     - dpkg --add-architecture i386 && apt-get update
     - apt-get install -y --no-install-recommends crossbuild-essential-i386 git pkg-config meson ninja-build
