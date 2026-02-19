@@ -1,4 +1,4 @@
-image: debian:stable-slim
+image: archlinux:multilib-devel
 
 stages:
   - build
@@ -18,13 +18,10 @@ build:linux-i686:
   variables:
      PKG_CONFIG_LIBDIR: "/usr/lib/i386-linux-gnu/pkgconfig"
   before_script:
-    - dpkg --add-architecture i386 && apt-get update
-    - apt-get install -y --no-install-recommends crossbuild-essential-i386 git pkg-config meson ninja-build
+    - pacman -Syyu --noconfirm meson
   script:
-    - meson setup build/linux/i686 --buildtype=$_build_type -Dcpp_args='-m32' -Dcpp_link_args='-m32' -Ddefault_library=static
-    - meson configure build/linux/i686 -Dcpp_args="-static"
-    - ninja -C build/linux/i686
-    - strip build/linux/i686/me3-tocfix || true
+    - meson setup build/linux/i686 --buildtype=$_build_type -Dcpp_args='-m32 -static' -Dcpp_link_args='-m32' -Ddefault_library=static
+    - meson compile -C build/linux/i686
 
 build:linux-x86_64:
   stage: build
@@ -35,21 +32,17 @@ build:linux-x86_64:
       - build
     expire_in: 1 week
   before_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends build-essential git pkg-config meson ninja-build
+    - pacman -Syyu --noconfirm meson
   script:
-    - meson setup build/linux/x86_64 --buildtype=$_build_type -Ddefault_library=static
-    - meson configure build/linux/x86_64 -Dcpp_args="-static"
-    - ninja -C build/linux/x86_64
-    - strip build/linux/x86_64/me3-tocfix || true
+    - meson setup build/linux/x86_64 --buildtype=$_build_type -Dcpp_args='-static' -Ddefault_library=static
+    - meson compile -C build/linux/x86_64
 
 .windows_mingw_template: &windows_mingw
   stage: build
   tags:
     - gitgud
   before_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends build-essential git pkg-config meson ninja-build mingw-w64 mingw-w64-tools
+    - pacman -Syyu --noconfirm meson mingw-w64
   artifacts:
     expire_in: 1 week
   script:
@@ -60,7 +53,7 @@ build:linux-x86_64:
       cpp = '/usr/bin/$MINGW_TRIPLE-g++'
       ar = '/usr/bin/$MINGW_TRIPLE-ar'
       strip = '/usr/bin/$MINGW_TRIPLE-strip'
-      pkgconfig = '/usr/bin/pkg-config'
+      pkg-config = '/usr/bin/pkg-config'
 
       [properties]
       needs_exe_wrapper = true
@@ -71,8 +64,8 @@ build:linux-x86_64:
       cpu = '$CPU'
       endian = 'little'
       EOF
-    - meson setup "$BUILD_DIR" --cross-file=mingw_cross.ini --buildtype=$_build_type
-    - ninja -C "$BUILD_DIR"
+    - meson setup "$BUILD_DIR" --cross-file=mingw_cross.ini --buildtype=$_build_type -Ddefault_library=static -Dcpp_link_args='-lstdc++exp'
+    - meson compile -C "$BUILD_DIR"
     - $MINGW_TRIPLE-strip "$BUILD_DIR/me3-tocfix.exe" || true
 
 build:windows-x86_64:
