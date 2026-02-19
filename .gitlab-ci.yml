@@ -103,7 +103,7 @@ release:
     - build:windows-i686
     - build:windows-x86_64
   before_script:
-    - apt update && apt install -y --no-install-recommends bash curl ca-certificates jq
+    - apt-get update && apt-get install -y --no-install-recommends bash curl ca-certificates jq
     - chsh -s /bin/bash
   script:
     - |
@@ -114,36 +114,49 @@ release:
       TAG="$CI_COMMIT_TAG"
       AUTH="Authorization: Bearer $RELEASE_API_TOKEN"
 
-      curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
+      release_json=$(curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"name\":\"$TAG\",\"tag_name\":\"$TAG\"}" \
-        "$REPO_API/releases" || true
+        "$REPO_API/releases" || true)
+
+      echo "Release response ...\n${release_json}"
 
       PLATFORMS=(
-        "build/linux/i686"
-        "build/linux/x86_64"
-        "build/windows/i686"
-        "build/windows/x86_64"
+        "linux/i686"
+        "linux/x86_64"
+        "windows/i686"
+        "windows/x86_64"
       )
 
       for p in "${PLATFORMS[@]}"; do
-        if [ -d "$p" ]; then
-          file_count=$(find "$p" -maxdepth 1 -type f -executable | wc -l)
+        _path="build/$p"
+        _arch=$(basename "$_path")
+        if [ -d "$_path" ]; then
+          file_count=$(find "$_path" -maxdepth 1 -type f -executable | wc -l)
           if [ "$file_count" -eq 1 ]; then
-            fpath=$(find "$p" -maxdepth 1 -type f -executable)
+            fpath=$(find "$_path" -maxdepth 1 -type f -executable)
             fname=$(basename "$fpath")
 
             echo "Uploading $fpath ..."
-            upload_json=$(curl -s --header "$AUTH" --upload-file "$fpath" "$REPO_API/uploads")
+            upload_json=$(curl -s --header "$AUTH" --form "file=@${fpath}" "$REPO_API/uploads")
 
-            file_url=$(echo "$upload_json" | jq -r '.url')
-            curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
-              -d "{\"name\":\"$fname\",\"url\":\"$file_url\"}" \
-              "$REPO_API/releases/$TAG/assets/links"
+            echo "Upload response ..."
+            echo "${upload_json}"
+
+            _link_name="${p}: $fname"
+
+            file_url="${CI_SERVER_URL}/$(echo "$upload_json" | jq -r '.full_path')"
+            link_json=$(curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
+              -d "{\"name\":\"$_link_name\",\"url\":\"$file_url\"}" \
+              "$REPO_API/releases/$TAG/assets/links")
+
+            echo "Link response ..."
+            echo "${link_json}"
+
             echo "Linked $fname -> $file_url"
           else
-            echo "Skipping $p: expected 1 file, found $file_count" >&2
+            echo "Skipping $_path: expected 1 file, found $file_count" >&2
           fi
         else
-          echo "Path $p does not exist, skipping."
+          echo "Path $_path does not exist, skipping."
         fi
       done
