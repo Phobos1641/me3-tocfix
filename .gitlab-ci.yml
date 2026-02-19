@@ -127,9 +127,9 @@ release:
 
       for p in "${PLATFORMS[@]}"; do
         if [ -d "$p" ]; then
-          file_count=$(find "$p" -maxdepth 1 -type f | wc -l)
+          file_count=$(find "$p" -maxdepth 1 -type f -executable | wc -l)
           if [ "$file_count" -eq 1 ]; then
-            fpath=$(find "$p" -maxdepth 1 -type f)
+            fpath=$(find "$p" -maxdepth 1 -type f -executable)
             fname=$(basename "$fpath")
 
             echo "Uploading $fpath ..."
