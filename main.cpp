@@ -147,7 +147,7 @@ void printHelp(int, char *argv[])
     assert(argv != NULL);
 
     const std::filesystem::path &p = argv[0];
-    const std::string &s = p.filename();
+    const std::string &s = p.filename().string();
 
     std::println("{} PATH_TO_PCConsoleTOC.bin", s);
 }
@@ -471,7 +471,7 @@ void listDLCFiles(const std::filesystem::path &root, std::vector<STOCEntry> &ent
         if (name.rfind("DLC_", 0) != 0)
             continue;
 
-        std::println("DLC: {}", entry.path().c_str());
+        std::println("DLC: {}", entry.path().string());
 
         for (const auto &it: getAllFiles(entry))
         {
