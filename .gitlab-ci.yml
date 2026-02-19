@@ -92,7 +92,7 @@ build:windows-i686:
 
 release:
   stage: release
-  image: curlimages/curl:latest
+  image: debian:stable-slim
   tags:
     - gitgud
   rules:
@@ -102,6 +102,9 @@ release:
     - build:linux-x86_64
     - build:windows-i686
     - build:windows-x86_64
+  before_script:
+    - apt update && apt install -y --no-install-recommends bash curl ca-certificates jq
+    - chsh -s /bin/bash
   script:
     - |
       set -euo pipefail
