@@ -22,7 +22,7 @@ to the `PCConsoleTOC.bin` file (or where it should be located if missing).
 
 ## Download
 
-Head over to [Releases](/-/releases) and download the latest release matching your platform.
+Head over to [Releases](https://gitgud.io/orochi/mods/mass-effect/me3-tocfix/-/releases) and download the latest release matching your platform.
 
 ## Credits
 
