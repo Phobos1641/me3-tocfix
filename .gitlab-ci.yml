@@ -44,6 +44,9 @@ build:linux-x86_64:
   before_script:
     - pacman -Syyu --noconfirm meson mingw-w64
   artifacts:
+    paths:
+      - /usr/share/licenses/mingw-w64-crt/COPYING.MinGW-w64-runtime.txt
+      - /usr/share/licenses/mingw-w64-winpthreads/COPYING.MinGW-w64-runtime.txt
     expire_in: 1 week
   script:
     - |
@@ -64,9 +67,8 @@ build:linux-x86_64:
       cpu = '$CPU'
       endian = 'little'
       EOF
-    - meson setup "$BUILD_DIR" --cross-file=mingw_cross.ini --buildtype=$_build_type -Ddefault_library=static -Dcpp_link_args='-lstdc++exp'
+    - meson setup "$BUILD_DIR" --cross-file=mingw_cross.ini --buildtype=$_build_type -Dcpp_link_args='-static -lstdc++exp -static-libgcc -static-libstdc++'
     - meson compile -C "$BUILD_DIR"
-    - $MINGW_TRIPLE-strip "$BUILD_DIR/me3-tocfix.exe" || true
 
 build:windows-x86_64:
   <<: *windows_mingw
