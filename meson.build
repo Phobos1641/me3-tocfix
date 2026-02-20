@@ -1,5 +1,5 @@
 project('ME3 TOCFix', 'cpp',
-  version: '0.0.1',
+  version: '0.1',
   default_options: [
     'cpp_std=c++26',
     'warning_level=2'
@@ -24,3 +24,5 @@ exe = executable('me3-tocfix',
   include_directories: inc_dirs,
   install: true
 )
+
+test('basic', exe)
