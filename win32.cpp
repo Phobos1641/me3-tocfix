@@ -39,6 +39,8 @@ bool readRegString(const HKEY hRoot, const tstring &sRegPath, const tstring &sRe
     {
         std::fprintf(stderr, "Failed to query key size\n");
 
+        RegCloseKey(hKey);
+
         return false;
     }
 

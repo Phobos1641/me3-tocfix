@@ -16,7 +16,7 @@
 namespace tocfix
 {
 
-typedef std::basic_string_view<TCHAR> tstring;
+typedef std::basic_string<TCHAR> tstring;
 
 bool readRegString(const HKEY hRoot, const tstring &sRegPath, const tstring &sRegKey, tstring &sOutput);
 
