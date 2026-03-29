@@ -88,7 +88,7 @@ std::vector<std::filesystem::path> getAllFiles(const std::filesystem::path &root
         ".tfc",
         ".tlk",
         ".txt",
-#if LEGENDARY_EDITION
+#ifdef LEGENDARY_EDITION
         ".dlc",
         ".ini",
         ".isb",
@@ -427,7 +427,7 @@ void listBaseFiles(const std::filesystem::path &root, std::vector<STOCEntry> &en
         "DLC",
         "Patches",
         "Splash",
-#if LEGENDARY_EDITION
+#ifdef LEGENDARY_EDITION
         "Config",
 #endif
     };
