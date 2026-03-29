@@ -5,7 +5,7 @@ void main(void)
     unsigned long CRC_POLYNOMIAL = 0x04C11DB7;
     unsigned long CRC_TABLE_SIZE = 256;
 
-    printf("constexpr std::array<uint32_t, %lu> crc_table[%lu] = {\n", CRC_TABLE_SIZE, CRC_TABLE_SIZE);
+    printf("constexpr std::array<uint32_t, %lu> crc_table = {\n", CRC_TABLE_SIZE, CRC_TABLE_SIZE);
 
     for (unsigned long idx = 0; idx < CRC_TABLE_SIZE; idx++)
     {
