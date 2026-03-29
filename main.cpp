@@ -389,22 +389,25 @@ std::optional<std::filesystem::path> remove_prefix_if_present(const std::filesys
 
 std::string getBIOFileName(const std::filesystem::path &name)
 {
-    // FIXME: This is all trash.
+    auto it = name.begin();
+    for (; it != name.end(); ++it)
+    {
+        if (iequals(it->string(), "BIOGame"))
+            break;
+    }
 
-    auto tmp = name;
-    const std::string &s = tmp.make_preferred().string();
+    if (it == name.end())
+        throw std::runtime_error("Path does not contain a BIOGame component");
 
-    const auto &bioPos = s.find("BIOGame/");
-    if (bioPos == std::string::npos)
-        throw std::runtime_error("Oh noes, that's a fucky-wucky");
+    std::string result;
+    for (; it != name.end(); ++it)
+    {
+        if (!result.empty())
+            result += '\\';
+        result += it->string();
+    }
 
-    auto bioPath = s.substr(bioPos);
-
-#ifndef _WIN32
-    std::replace(bioPath.begin(), bioPath.end(), '/', '\\');
-#endif
-
-    return bioPath;
+    return result;
 }
 
 inline STOCEntry fsToEntry(const std::filesystem::path &file)
