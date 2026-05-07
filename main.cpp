@@ -421,6 +421,24 @@ inline STOCEntry fsToEntry(const std::filesystem::path &file)
     };
 }
 
+void backupTOC(const std::filesystem::path &original)
+{
+    if (!std::filesystem::exists(original)) {
+        std::println(stderr, "Warning: Backup source TOC not found {}", original);
+        return;
+    }
+
+    std::error_code ec;
+    std::filesystem::path backup = original;
+    backup += std::filesystem::path(".bak").stem();
+
+    std::println("Backing up TOC {} as {}", original, backup);
+
+    std::filesystem::rename(original, backup, ec);
+    if (ec)
+        throw std::runtime_error("Failed to rename original TOC file");
+}
+
 void listBaseFiles(const std::filesystem::path &root, std::vector<STOCEntry> &entries)
 {
     const std::unordered_set<std::string> &vSkipPaths{
@@ -485,6 +503,52 @@ void listDLCFiles(const std::filesystem::path &root, std::vector<STOCEntry> &ent
     }
 }
 
+void recurseWriteDLCFilesTOC(const std::filesystem::path &root)
+{
+    for (const auto &entry: std::filesystem::directory_iterator(root))
+    {
+        if (!entry.is_directory())
+            continue;
+
+        std::string name = entry.path().filename().string();
+        if (name.rfind("DLC_", 0) != 0)
+            continue;
+
+        std::vector<STOCEntry> entries;
+
+        std::println("Generating TOC for DLC: {}", entry.path().filename().string());
+
+        for (const auto &it: getAllFiles(entry))
+        {
+            std::println("+ {}", it.string());
+
+            entries.emplace_back(fsToEntry(it));
+        }
+
+        const std::filesystem::path toc = entry.path() / "PCConsoleTOC.bin";
+
+        if (entries.empty())
+            std::println(stderr, "Warning: No TOC-able files found");
+
+        if (entries.empty() && !std::filesystem::exists(toc)) {
+            std::println(stderr, "Warning: No TOC entries to write, and no existing TOC found. Skipping.");
+            continue;
+        }
+
+        backupTOC(toc);
+
+        std::println("Writing DLC TOC: {}", toc);
+
+        std::fstream fs;
+
+        fs.open(toc, std::fstream::out | std::fstream::binary | std::fstream::trunc);
+
+        writeEntries(fs, entries);
+
+        fs.close();
+    }
+}
+
 int main(int argc, char *argv[])
 {
     // Registry path: HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\BioWare\Mass Effect 3
@@ -518,15 +582,7 @@ int main(int argc, char *argv[])
     std::println(stderr, "BIOGame path: {}", pBIOPath.string());
     std::println(stderr, "DLC path: {}", pDLCPath.string());
 
-    pTOCPathBackup = pTOCPath;
-    pTOCPathBackup += std::filesystem::path(".bak").stem();
-
-    std::filesystem::rename(pTOCPath, pTOCPathBackup, ec);
-    if (ec) {
-        std::println(stderr, "Failed to rename original TOC file");
-
-        return EXIT_FAILURE;
-    }
+    backupTOC(pTOCPath);
 
     std::fstream fs;
 
@@ -560,6 +616,10 @@ int main(int argc, char *argv[])
     listDLCFiles(pDLCPath, vEntries);
 
     writeEntries(fs, vEntries);
+
+    std::println("Generating TOCs for DLCs:");
+
+    recurseWriteDLCFilesTOC(pDLCPath);
 #endif
 
     fs.close();
