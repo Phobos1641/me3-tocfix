@@ -424,7 +424,7 @@ inline STOCEntry fsToEntry(const std::filesystem::path &file)
 void backupTOC(const std::filesystem::path &original)
 {
     if (!std::filesystem::exists(original)) {
-        std::println(stderr, "Warning: Backup source TOC not found {}", original);
+        std::println(stderr, "Warning: Backup source TOC not found {}", original.string());
         return;
     }
 
@@ -432,7 +432,7 @@ void backupTOC(const std::filesystem::path &original)
     std::filesystem::path backup = original;
     backup += std::filesystem::path(".bak").stem();
 
-    std::println("Backing up TOC {} as {}", original, backup);
+    std::println("Backing up TOC {} as {}", original.string(), backup.string());
 
     std::filesystem::rename(original, backup, ec);
     if (ec)
@@ -537,7 +537,7 @@ void recurseWriteDLCFilesTOC(const std::filesystem::path &root)
 
         backupTOC(toc);
 
-        std::println("Writing DLC TOC: {}", toc);
+        std::println("Writing DLC TOC: {}", toc.string());
 
         std::fstream fs;
 
