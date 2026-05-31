@@ -1,7 +1,7 @@
 project('ME3 TOCFix', 'cpp',
   version: '0.1',
   default_options: [
-    'cpp_std=c++26',
+    'cpp_std=c++23',
     'warning_level=2'
   ]
 )
