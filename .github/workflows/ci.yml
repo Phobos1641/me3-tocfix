@@ -1,0 +1,192 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+env:
+  BUILD_TYPE: debugoptimized
+  LLVM_MINGW_URL: "https://github.com/Phobos1641/llvm-mingw/releases/download/20260519-phobos/llvm-mingw-20260531-ucrt-ubuntu-22.04-x86_64.tar.xz"
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            build_dir: build/linux/x86_64
+            apt_packages: meson ninja-build gcc-14 g++-14 linux-libc-dev
+            cpp_link_args: "-static"
+
+          - target: linux-i686
+            build_dir: build/linux/i686
+            apt_packages: meson ninja-build gcc-14 g++-14 linux-libc-dev gcc-14-multilib g++-14-multilib linux-libc-dev:i386
+            cpp_args: "-m32"
+            cpp_link_args: "-m32 -static"
+
+          - target: windows-x86_64
+            build_dir: build/windows/x86_64
+            apt_packages: meson ninja-build
+            mingw_triple: x86_64-w64-mingw32
+            cpu_family: x86_64
+            cpu: x86_64
+            cpp_args: "-D_WIN32_WINNT=0x0601"
+            cpp_link_args: "-static"
+
+          - target: windows-i686
+            build_dir: build/windows/i686
+            apt_packages: meson ninja-build
+            mingw_triple: i686-w64-mingw32
+            cpu_family: x86
+            cpu: i686
+            cpp_args: "-D_WIN32_WINNT=0x0601"
+            cpp_link_args: "-static"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable multilib
+        if: endsWith(matrix.target, '-i686')
+        run: sudo dpkg --add-architecture i386
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.apt_packages }}
+
+      - name: Create GCC 14 native file
+        if: startsWith(matrix.target, 'linux-')
+        run: |
+          cat > gcc14_native.ini << 'EOF'
+          [binaries]
+          c   = 'gcc-14'
+          cpp = 'g++-14'
+          EOF
+
+      - name: Download and unpack llvm-mingw
+        if: startsWith(matrix.target, 'windows-')
+        run: curl -fsSL "${{ env.LLVM_MINGW_URL }}" | sudo tar -xJ --strip-components=1 -C /usr/local
+
+      - name: Create MinGW cross-compilation file
+        if: startsWith(matrix.target, 'windows-')
+        run: |
+          cat > mingw_cross.ini << 'EOF'
+          [binaries]
+          c          = '${{ matrix.mingw_triple }}-clang'
+          cpp        = '${{ matrix.mingw_triple }}-clang++'
+          ar         = 'llvm-ar'
+          strip      = 'llvm-strip'
+          pkg-config = 'pkg-config'
+
+          [properties]
+          needs_exe_wrapper = true
+
+          [host_machine]
+          system     = 'windows'
+          cpu_family = '${{ matrix.cpu_family }}'
+          cpu        = '${{ matrix.cpu }}'
+          endian     = 'little'
+          EOF
+
+      - name: Configure (Meson)
+        run: |
+          MESON_ARGS=(
+            "${{ matrix.build_dir }}"
+            "--buildtype=${{ env.BUILD_TYPE }}"
+            "-Ddefault_library=static"
+          )
+
+          [ -n "${{ matrix.cpp_args }}"      ] && MESON_ARGS+=("-Dcpp_args=${{ matrix.cpp_args }}")
+          [ -n "${{ matrix.cpp_link_args }}" ] && MESON_ARGS+=("-Dcpp_link_args=${{ matrix.cpp_link_args }}")
+          [ -f gcc14_native.ini              ] && MESON_ARGS+=("--native-file=gcc14_native.ini")
+          [ -f mingw_cross.ini               ] && MESON_ARGS+=("--cross-file=mingw_cross.ini")
+
+          meson setup "${MESON_ARGS[@]}"
+
+      - name: Compile
+        run: meson compile -C ${{ matrix.build_dir }}
+
+      - name: Stage binary
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          mapfile -t bins < <(
+            meson introspect "${{ matrix.build_dir }}" --targets \
+              | jq -r '.[] | select(.type == "executable") | .filename[]'
+          )
+
+          if [ "${#bins[@]}" -ne 1 ]; then
+            echo "::error::expected exactly 1 executable, found ${#bins[@]}: ${bins[*]:-<none>}"
+            exit 1
+          fi
+
+          src="${bins[0]}"
+          base="$(basename "$src")"
+
+          # Fold the target into the *filename* so release assets don't collide.
+          case "$base" in
+            *.exe) asset="${base%.exe}-${{ matrix.target }}.exe" ;;
+            *)     asset="${base}-${{ matrix.target }}" ;;
+          esac
+
+          cp "$src" "dist/$asset"
+          echo "Staged dist/$asset"
+
+      - name: Upload build artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release and upload binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
+          mapfile -t files < <(find artifacts -type f | sort)
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no binaries found to upload"
+            exit 1
+          fi
+
+          printf 'Uploading: %s\n' "${files[@]}"
+
+          gh release upload "$TAG" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
