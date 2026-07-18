@@ -12,7 +12,8 @@ permissions:
 
 env:
   BUILD_TYPE: debugoptimized
-  LLVM_MINGW_URL: "https://github.com/Phobos1641/llvm-mingw/releases/download/20260519-phobos/llvm-mingw-20260531-ucrt-ubuntu-22.04-x86_64.tar.xz"
+  LLVM_MINGW_URL: "https://github.com/Phobos1641/llvm-mingw/releases/download/20260717/llvm-mingw-20260717-ucrt-ubuntu-22.04-x86_64.tar.xz"
+  LLVM_MINGW_B2SUM: "d7086e8167d670d1186f3be586b0b51ddc59b5145006f7c3e1e1a79872bd5ab76bbd1c881c925cd2bd2f3b6bdb69eb46a46379ce45143aed432c04ef0ee3e491"
 
 jobs:
   build:
@@ -74,7 +75,13 @@ jobs:
 
       - name: Download and unpack llvm-mingw
         if: startsWith(matrix.target, 'windows-')
-        run: curl -fsSL "${{ env.LLVM_MINGW_URL }}" | sudo tar -xJ --strip-components=1 -C /usr/local
+        run: |
+          _mingw_asset="$(basename -- "${{ env.LLVM_MINGW_URL }}")"
+          echo "Downloading ${url}"
+          curl -fL --retry 3 -o "$_mingw_asset" "${{ env.LLVM_MINGW_URL }}"
+          echo "Verifying BLAKE2b-512 checksum..."
+          echo "${LLVM_MINGW_B2SUM}  $_mingw_asset" | b2sum -c --strict -
+          sudo tar -xJ --strip-components=1 -C /usr/local -f "$_mingw_asset"
 
       - name: Create MinGW cross-compilation file
         if: startsWith(matrix.target, 'windows-')
